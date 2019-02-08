@@ -21,21 +21,33 @@ cdef inline check_array(arr):
     if len(arr) != shape[0]:
         raise TypeError('Inconsistency in array len', arr)
 
+
+    
 cdef class Index:
-    cdef PyDataSource * c_src
+    cdef SourceABC * c_src
     cdef IndexParams    c_indexParams
-    cdef PyIndexL2    * c_index
+    cdef IndexABC    * c_index
 
     def __cinit__(self, array, w=(0.3, 0.7), float reconstruction_weight=0.25, trees = None):
-        check_array(array)
-        self.c_src = new PyDataSource(array)
-        
+        cdef PyDataSource_* src
+        cdef ProgressivisSource_* src_pvs
+        if not (hasattr(array, '__module__') and 'progressivis.table.' in array.__module__):
+            check_array(array)
+            src = new PyDataSource_(array)
+            self.c_src = <SourceABC*>(new PyDataSource(src))
+            self.c_index = <IndexABC*>(new PyIndexL2(new PyIndexL2_(src,
+                                     self.c_indexParams, TreeWeight(w[0], w[1]),
+                                     reconstruction_weight)))
+        else:
+            array_ = array.get_panene_data()
+            src_pvs = new ProgressivisSource_(array_)
+            self.c_src = <SourceABC*>(new ProgressivisSource(src_pvs))
+            self.c_index = <IndexABC*>(new PyIndexPvs(new PyIndexPvs_(src_pvs,
+                                     self.c_indexParams, TreeWeight(w[0], w[1]),
+                                     reconstruction_weight)))
+            
         if trees is not None:
             self.c_indexParams.trees = trees
-
-        self.c_index = new PyIndexL2(self.c_src,
-                                     self.c_indexParams, TreeWeight(w[0], w[1]),
-                                     reconstruction_weight)
 
     def __dealloc__(self):
         del self.c_index
@@ -154,19 +166,23 @@ cdef class Index:
             'updateIndexElapsed': ur.updateIndexElapsed
         }
 
+    
 cdef class KNNTable:
-    cdef PyDataSource * c_src
+    cdef SourceABC * c_src
     cdef IndexParams    c_indexParams
     cdef SearchParams   c_searchParams
     cdef PyDataSink   * c_sink
-    cdef PyKNNTable   * c_table
-    
+    cdef KNNTableABC   * c_table
+
+
     def __cinit__(self, object array, int k, object neighbors, object distances,
                   treew=(0.3, 0.7), tablew=(0.5, 0.5),
                   trees=None,
                   checks=None, eps=None, sorted=None, cores=None
                   ):
-        check_array(array)
+        cdef PyDataSource_* src
+        cdef ProgressivisSource_* src_pvs
+        cdef progressivis_mode = False
         check_array(neighbors)
         check_array(distances)
         if neighbors.shape[1] != k or distances.shape[1] != k:
@@ -181,7 +197,16 @@ cdef class KNNTable:
             self.c_searchParams.eps = eps
         if sorted is not None:
             self.c_searchParams.sorted = sorted
-        self.c_src = new PyDataSource(array)
+        if not (hasattr(array, '__module__') and 'progressivis.table.' in array.__module__):
+            check_array(array)
+            src = new PyDataSource_(array)
+            self.c_src = <SourceABC*>(new PyDataSource(src))
+        else:
+            progressivis_mode = True
+            array_ = array.get_panene_data()
+            src_pvs = new ProgressivisSource_(array_)
+            self.c_src = <SourceABC*>(
+                new ProgressivisSource(src_pvs))
         self.c_sink = new PyDataSink(neighbors, distances)
         if not (self.is_using_pyarray and \
                 self.is_using_neighbors_pyarray and \
@@ -191,16 +216,25 @@ cdef class KNNTable:
             cores = 1
         if cores is not None:
             self.c_searchParams.cores = cores
-
-        self.c_table = new PyKNNTable(self.c_src,
-                                      self.c_sink,
-                                      k, 
-                                      self.c_indexParams,
-                                      self.c_searchParams,
-                                      TreeWeight(treew[0], treew[1]),
-                                      TableWeight(tablew[0], tablew[1])
-                                     )
-
+        if not progressivis_mode:
+            self.c_table = <KNNTableABC*>(new PyKNNTable(new PyKNNTable_(src,
+                                        self.c_sink,
+                                        k, 
+                                        self.c_indexParams,
+                                        self.c_searchParams,
+                                        TreeWeight(treew[0], treew[1]),
+                                        TableWeight(tablew[0], tablew[1])
+                                        )))
+        else:
+            self.c_table = <KNNTableABC*>(new PyKNNTablePvs(new PyKNNTablePvs_(src_pvs,
+                                        self.c_sink,
+                                        k, 
+                                        self.c_indexParams,
+                                        self.c_searchParams,
+                                        TreeWeight(treew[0], treew[1]),
+                                        TableWeight(tablew[0], tablew[1])
+                                        )))
+            
     @property
     def is_using_pyarray(self):
         return self.c_src.is_using_pyarray()

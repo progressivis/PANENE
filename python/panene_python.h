@@ -3,7 +3,8 @@
 #include "numpy/ndarrayobject.h"
 #include "numpy/ufuncobject.h"
 #include <progressive_knn_table.h>
-
+#include <type_traits>
+#include <vector>
 #ifndef NDEBUG
 #include <iostream>
 #define DBG(x) x
@@ -13,6 +14,8 @@
 
 
 using namespace panene;
+
+typedef std::vector<PyArrayObject> PVEC;
 
 inline long getpylong(PyObject * obj)
 {
@@ -34,7 +37,7 @@ inline long getpylong(PyObject * obj)
   return v;
 }
 
-class PyDataSource
+template <class TT> class PyDataSourceTT
 {
  public:
 
@@ -43,13 +46,18 @@ class PyDataSource
   typedef float ElementType;
   typedef float DistanceType;
 
-  PyDataSource(PyObject * o)
+  using dummy_type=typename std::conditional<std::is_same<TT, PyArrayObject>::value, std::true_type, std::false_type>::type;
+  //using dummy_type=typename std::true_type::type;
+  typedef std::true_type Numpy2D;
+  typedef std::false_type PvsData;  
+  //TODO: whith C++17 replace the dummy_type hack with "if constexpr ..."
+  PyDataSourceTT(PyObject * o)
     : _d(0),
     _object(Py_None),
-    _array(nullptr) {
+    _array(0) {
     Py_INCREF(_object);
     import_array_wrap();
-    set_array(o);
+    set_array_impl(o, dummy_type());
   }
 
 
@@ -65,8 +73,7 @@ class PyDataSource
     return NULL;
 #endif
   }
-
-  ~PyDataSource() {
+  ~PyDataSourceTT() {
     DBG(std::cerr << "calling destructor" << std::endl);
     if (_object != nullptr) {
       DBG(std::cerr << "~ _object refcount: " << _object->ob_refcnt << std::endl);
@@ -75,8 +82,30 @@ class PyDataSource
     _object = nullptr;
     _array = nullptr;
   }
-
   void set_array(PyObject * o) {
+    set_array_impl(o, dummy_type());
+  }
+
+  PyObject * get_array() const {
+    Py_INCREF(_object); //TODO check that this is the right way to do it
+    return _object;
+  }
+
+  bool is_using_pyarray() const { return _array != nullptr; }
+  ElementType get(const IDType &id, const IDType &dim) const {
+    return get_impl(id, dim, dummy_type());
+  }
+  void get(const IDType &id, std::vector<ElementType> &result) const {
+    return get_impl(id, result, dummy_type());
+  }
+  void set_dim() {
+    set_dim_impl(dummy_type());
+  }
+  size_t size() const {
+    return size_impl(dummy_type());
+  }
+ private:
+  inline void set_array_impl(PyObject * o, Numpy2D) {
     DBG(std::cerr << "set_array(" << o << ")" << std::endl;)
     if (o == _object) return;
     Py_INCREF(o);
@@ -99,15 +128,31 @@ class PyDataSource
 
     set_dim();
   }
+  inline void set_array_impl(PyObject * o, PvsData) {
+    DBG(std::cerr << "set_array(" << o << ")" << std::endl;)
+    if (o == _object) return;
+    Py_INCREF(o);
+    _array = nullptr;
+    Py_DECREF(_object);    
+    _object = o;    
+    if (_object != Py_None) { //checking made in cython when call
+      if(!_array){
+        _array = new std::vector<PyArrayObject*>();
+      } else {
+        _array -> clear();
+      }
+      for(long i=0;i < PyList_GET_SIZE(_object); i++){
+        _array->push_back(reinterpret_cast<PyArrayObject*>(PyList_GET_ITEM(_object, i)));
+      }
+    }
+    else {
+      DBG(std::cerr << "Object is None...");
+    }
 
-  PyObject * get_array() const {
-    Py_INCREF(_object); //TODO check that this is the right way to do it
-    return _object;
+    set_dim();
   }
-
-  bool is_using_pyarray() const { return _array != nullptr; }
-
-  ElementType get(const IDType &id, const IDType &dim) const {
+  
+  inline ElementType get_impl(const IDType &id, const IDType &dim, Numpy2D) const {
     if (_array != nullptr) {
       //DBG(std::cerr << "get from array" << std::endl);
       void * ptr = PyArray_GETPTR2(_array, id, dim);
@@ -153,8 +198,29 @@ class PyDataSource
     PyGILState_Release(gstate);
     return ret;
   }
+  inline ElementType get_impl(const IDType &id, const IDType &dim, PvsData) const {
+    PyArrayObject* array = (*_array)[dim];
+      //DBG(std::cerr << "get from array" << std::endl);
+      void * ptr = PyArray_GETPTR1(array, id);
+      switch (PyArray_TYPE(array)) {
+      case NPY_FLOAT: return *(npy_float *) ptr;
+      case NPY_DOUBLE: return (ElementType)*(npy_double*)ptr;
+      case NPY_LONGDOUBLE: return (ElementType)*(npy_longdouble*)ptr;
+      case NPY_BYTE: return (ElementType)*(npy_byte *)ptr;
+      case NPY_UBYTE: return (ElementType)*(npy_ubyte *)ptr;
+      case NPY_SHORT: return (ElementType)*(npy_short *)ptr;
+      case NPY_USHORT: return (ElementType)*(npy_ushort *)ptr;
+      case NPY_INT: return (ElementType)*(npy_int *)ptr;
+      case NPY_UINT: return (ElementType)*(npy_uint *)ptr;
+      case NPY_LONG: return (ElementType)*(npy_long *)ptr;
+      case NPY_ULONG: return (ElementType)*(npy_ulong *)ptr;
+      case NPY_LONGLONG: return (ElementType)*(npy_longlong *)ptr;
+      case NPY_ULONGLONG: return (ElementType)*(npy_ulonglong *)ptr;
+      }
+      DBG(std::cerr << "wrong type" << std::endl);
+    }
 
-  void get(const IDType &id, std::vector<ElementType> &result) const {
+  inline void get_impl(const IDType &id, std::vector<ElementType> &result, Numpy2D) const {    
     size_t d = dim();
     if (_array != nullptr) {
       switch (PyArray_TYPE(_array)) {
@@ -187,7 +253,85 @@ class PyDataSource
       result[i] = get(id, i);
     }
   }
+  inline void get_impl(const IDType &id, std::vector<ElementType> &result, PvsData) const {
+    size_t d = dim();
+    for(long j=0; j < _array->size(); j++){
+      for(unsigned int i=0;i < d;++i) {
+        result[i] = get(id, i);
+      }
+    }
+  }
+  inline void set_dim_impl(Numpy2D) {
+    _d = 0;
+    if (_object==Py_None) return;
 
+    if (_array != nullptr) {
+      _d = PyArray_DIM(_array, 1);
+      DBG(std::cerr << "Fast set_dim is: " << _d << std::endl);
+      return;
+    }
+    long length = PyObject_Length(_object);
+    DBG(std::cerr << "Getting length: " << length << std::endl);
+    if (length == -1) {
+      throw std::invalid_argument("Array should implement __len__"); //generates a ValueError
+    }
+
+    DBG(std::cerr << "Getting shape" << std::endl);
+    PyObject * shape = PyObject_GetAttrString(_object, "shape");
+    DBG(std::cerr << "Got shape, getting dim" << std::endl);
+    if (PyTuple_Size(shape) != 2) {
+      throw std::invalid_argument("Array should be a 2-dim object"); //generates a ValueError
+    }
+    PyObject * dim = PyTuple_GetItem(shape, 1);
+    DBG(std::cerr << "Got dim" << std::endl);
+    _d = getpylong(dim);
+    DBG(std::cerr << "dim is: " << _d << std::endl);
+
+    PyObject * len = PyTuple_GetItem(shape, 0);
+    Py_DECREF(shape);
+    if (getpylong(len) != length) {
+      throw std::invalid_argument("Array length is not the same as shape[0]"); 
+    }
+    DBG(std::cerr << "set_dim _object refcount: " << _object->ob_refcnt << std::endl);
+  }
+  inline void set_dim_impl(PvsData) {
+    _d = 0;
+    if (_object==Py_None) return;
+    _d = _array->size(); //PyArray_DIM(_array[0], 1);
+    DBG(std::cerr << "Fast set_dim is: " << _d << std::endl);
+    return;
+ 
+  }
+  inline size_t size_impl(Numpy2D) const {
+    DBG(std::cerr << "Size called " << std::endl);
+    DBG(std::cerr << "size _object refcount: " << _object->ob_refcnt << std::endl);
+    if (_object==Py_None) {
+      DBG(std::cerr << "Size return 0" << std::endl);
+      return 0;
+    }
+    else if (_array != nullptr) {
+      return PyArray_DIM(_array, 0);
+    }
+    PyGILState_STATE gstate;
+    gstate = PyGILState_Ensure();
+    size_t s = PyObject_Length(_object);
+    DBG(std::cerr << "Size return " << s << std::endl);
+    DBG(std::cerr << "size _object refcount: " << _object->ob_refcnt << std::endl);
+    /* Release the thread. No Python API allowed beyond this point. */
+    PyGILState_Release(gstate);
+    return s;
+  }
+  inline size_t size_impl(PvsData) const {
+    DBG(std::cerr << "Size called " << std::endl);
+    DBG(std::cerr << "size _object refcount: " << _object->ob_refcnt << std::endl);
+    if (_object==Py_None) {
+      DBG(std::cerr << "Size return 0" << std::endl);
+      return 0;
+    }
+    return PyArray_DIM((*_array)[0], 0);
+  }
+
+public:
   IDType findDimWithMaxSpan(const IDType &id1, const IDType &id2) {
     size_t dimension = 0;
     ElementType maxSpan = 0;
@@ -279,25 +423,6 @@ class PyDataSource
   }
 
 
-  size_t size() const {
-    DBG(std::cerr << "Size called " << std::endl);
-    DBG(std::cerr << "size _object refcount: " << _object->ob_refcnt << std::endl);
-    if (_object==Py_None) {
-      DBG(std::cerr << "Size return 0" << std::endl);
-      return 0;
-    }
-    else if (_array != nullptr) {
-      return PyArray_DIM(_array, 0);
-    }
-    PyGILState_STATE gstate;
-    gstate = PyGILState_Ensure();
-    size_t s = PyObject_Length(_object);
-    DBG(std::cerr << "Size return " << s << std::endl);
-    DBG(std::cerr << "size _object refcount: " << _object->ob_refcnt << std::endl);
-    /* Release the thread. No Python API allowed beyond this point. */
-    PyGILState_Release(gstate);
-    return s;
-  }
 
   size_t capacity() const {
     return size();
@@ -310,42 +435,9 @@ class PyDataSource
  protected:  
   long            _d;
   PyObject      * _object;
-  PyArrayObject * _array;
+  TT * _array;
   bool            _is_float;
 
-  void set_dim() {
-    _d = 0;
-    if (_object==Py_None) return;
-
-    if (_array != nullptr) {
-      _d = PyArray_DIM(_array, 1);
-      DBG(std::cerr << "Fast set_dim is: " << _d << std::endl);
-      return;
-    }
-    long length = PyObject_Length(_object);
-    DBG(std::cerr << "Getting length: " << length << std::endl);
-    if (length == -1) {
-      throw std::invalid_argument("Array should implement __len__"); //generates a ValueError
-    }
-
-    DBG(std::cerr << "Getting shape" << std::endl);
-    PyObject * shape = PyObject_GetAttrString(_object, "shape");
-    DBG(std::cerr << "Got shape, getting dim" << std::endl);
-    if (PyTuple_Size(shape) != 2) {
-      throw std::invalid_argument("Array should be a 2-dim object"); //generates a ValueError
-    }
-    PyObject * dim = PyTuple_GetItem(shape, 1);
-    DBG(std::cerr << "Got dim" << std::endl);
-    _d = getpylong(dim);
-    DBG(std::cerr << "dim is: " << _d << std::endl);
-
-    PyObject * len = PyTuple_GetItem(shape, 0);
-    Py_DECREF(shape);
-    if (getpylong(len) != length) {
-      throw std::invalid_argument("Array length is not the same as shape[0]"); 
-    }
-    DBG(std::cerr << "set_dim _object refcount: " << _object->ob_refcnt << std::endl);
-  }
 };
 
 class PyDataSink
@@ -744,6 +836,85 @@ typedef ResultSet<size_t, float> PyResultSet;
 typedef std::vector<ResultSet<size_t, float>> PyResultSets;
 typedef std::vector<float> Point;
 typedef std::vector<Point> Points;
+typedef PyDataSourceTT<PyArrayObject> PyDataSource_;
+typedef ProgressiveKDTreeIndex<PyDataSource_> PyIndexL2_;
+typedef ProgressiveKNNTable<PyIndexL2_, PyDataSink> PyKNNTable_;
+typedef PyDataSourceTT<std::vector<PyArrayObject*>> ProgressivisSource_;
+typedef ProgressiveKDTreeIndex<ProgressivisSource_> PyIndexPvs_;
+typedef ProgressiveKNNTable<PyIndexPvs_, PyDataSink> PyKNNTablePvs_;
 
-typedef ProgressiveKDTreeIndex<PyDataSource> PyIndexL2;
-typedef ProgressiveKNNTable<PyIndexL2, PyDataSink> PyKNNTable;
+class SourceABC {
+ public:
+  virtual ~SourceABC(){};
+  virtual PyObject * get_array() const = 0;
+  virtual bool is_using_pyarray() const = 0;
+  virtual void set_array(PyObject * o) = 0;
+};
+
+template <class T> class SourceT : SourceABC {
+ private:
+  T *_impl;
+ public:
+ SourceT(T *obj) : _impl(obj) {};
+  virtual ~SourceT(){if(_impl){/*delete _impl; _impl = nullptr;*/}};
+  virtual PyObject * get_array() const {return _impl->get_array();};
+  virtual bool is_using_pyarray() const {return _impl->is_using_pyarray();};
+  virtual void set_array(PyObject * o) {_impl->set_array(o);};
+};
+
+typedef SourceT<PyDataSource_> PyDataSource;
+typedef SourceT<ProgressivisSource_> ProgressivisSource;
+
+class IndexABC {
+ public:
+  virtual ~IndexABC() {};
+  virtual size_t addPoints(size_t end) = 0;
+  virtual void beginUpdate() = 0;
+  virtual UpdateResult2 run(size_t ops)  = 0;
+  virtual void removePoint(size_t id) = 0;
+  virtual size_t getSize() = 0;
+  virtual int usedMemory() = 0;
+  virtual void knnSearch(size_t id, PyResultSet& results, size_t knn, const SearchParams& params)  = 0;
+  virtual void knnSearchVec(const Points& vec, PyResultSets& results, size_t knn, const SearchParams& params)  = 0;
+};
+
+template <class T> class IndexT : IndexABC {
+ private:
+  T *_impl;
+ public:
+ IndexT(T *obj): _impl(obj) {};
+  virtual ~IndexT(){if(_impl){/*delete _impl; _impl = nullptr;*/}};
+  virtual size_t addPoints(size_t end) {return _impl->addPoints(end);};
+  virtual void beginUpdate() {_impl->beginUpdate();};
+  virtual UpdateResult2 run(size_t ops) {return _impl->run(ops);};
+  virtual void removePoint(size_t id) {_impl->removePoint(id);};
+  virtual size_t getSize() {return _impl->getSize();};
+  virtual int usedMemory() {return _impl->usedMemory();};
+  virtual void knnSearch(size_t id, PyResultSet& results, size_t knn, const SearchParams& params){_impl->knnSearch(id, results, knn, params);};
+  virtual void knnSearchVec(const Points& vec, PyResultSets& results, size_t knn, const SearchParams& params) {_impl->knnSearchVec(vec, results, knn, params);};
+};
+
+typedef IndexT<PyIndexL2_> PyIndexL2;
+typedef IndexT<PyIndexPvs_> PyIndexPvs;
+
+class KNNTableABC {
+ public:
+  virtual ~KNNTableABC(){};
+  virtual size_t getSize() = 0;
+  virtual UpdateResult run(size_t ops) = 0;
+  //virtual PyResultSet& getNeighbors(int id) = 0;
+};
+
+
+template <class T> class KnnTableT : KNNTableABC {
+ private:
+  T *_impl;
+ public:
+  KnnTableT(T *obj): _impl(obj) {};
+  virtual ~KnnTableT(){if(_impl){delete _impl; _impl = nullptr;}};
+  virtual size_t getSize() {return _impl->getSize();};
+  virtual UpdateResult run(size_t ops) {return _impl->run(ops);};
+  //virtual PyResultSet& getNeighbors(int id) {return _impl->getNeighbors(id);};
+};
+typedef KnnTableT<PyKNNTable_> PyKNNTable;
+typedef KnnTableT<PyKNNTablePvs_> PyKNNTablePvs;
