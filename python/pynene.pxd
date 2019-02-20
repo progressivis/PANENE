@@ -9,6 +9,7 @@ ctypedef unsigned long size_t
 cdef extern from "panene_python.h":
     cdef cppclass SourceABC:
         void set_array(object array)
+        void refresh()
         object get_array() const
         bool is_using_pyarray() const
     cdef cppclass PyDataSource_:
@@ -16,6 +17,7 @@ cdef extern from "panene_python.h":
     cdef cppclass PyDataSource:
         PyDataSource(PyDataSource_*)
         void set_array(object array)
+        void refresh()        
         object get_array() const
         bool is_using_pyarray() const
 
@@ -146,6 +148,7 @@ cdef extern from "panene_python.h":
     cdef cppclass ProgressivisSource:
         ProgressivisSource(ProgressivisSource_*)
         void set_array(object array)
+        void refresh()        
         object get_array() const
         bool is_using_pyarray() const
 

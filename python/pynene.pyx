@@ -67,6 +67,7 @@ cdef class Index:
         return self.c_src.is_using_pyarray()
 
     def add_points(self, size_t end):
+        self.c_src.refresh()
         self.c_index.addPoints(end)
 
     def size(self):
@@ -92,6 +93,7 @@ cdef class Index:
             raise ValueError('k is larger than the number of points in the index. Make sure you called add_points()')
 
         cdef PyResultSet res = PyResultSet(k)
+        self.c_src.refresh()
         with nogil:
             self.c_index.knnSearch(pid, res, k, params)
 
@@ -135,7 +137,7 @@ cdef class Index:
                 cpoints[j][i] = points[j, i]
 
         cdef PyResultSets ress = PyResultSets(n)
-
+        self.c_src.refresh()
         with nogil:
             self.c_index.knnSearchVec(cpoints, ress, k, params)
         ids = np.ndarray((n, k), dtype=np.int)

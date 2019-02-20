@@ -91,6 +91,11 @@ template <class TT> class PyDataSourceTT
     return _object;
   }
 
+  void refresh() {
+    refresh_impl(dummy_type());
+  }
+
+  
   bool is_using_pyarray() const { return _array != nullptr; }
   ElementType get(const IDType &id, const IDType &dim) const {
     return get_impl(id, dim, dummy_type());
@@ -150,6 +155,15 @@ template <class TT> class PyDataSourceTT
     }
 
     set_dim();
+  }
+  
+  inline void refresh_impl(Numpy2D) {}  
+  inline void refresh_impl(PvsData) {
+    if (!_array || !_object || _object == Py_None) return;
+    //TODO: more checks?
+    for(long i=0;i < PyList_GET_SIZE(_object); i++){
+    (*_array)[i] = reinterpret_cast<PyArrayObject*>(PyList_GET_ITEM(_object, i));
+    }
   }
   
   inline ElementType get_impl(const IDType &id, const IDType &dim, Numpy2D) const {
@@ -220,7 +234,7 @@ template <class TT> class PyDataSourceTT
       DBG(std::cerr << "wrong type" << std::endl);
     }
 
-  inline void get_impl(const IDType &id, std::vector<ElementType> &result, Numpy2D) const {    
+  inline void get_impl(const IDType &id, std::vector<ElementType> &result, Numpy2D dummy) const {    
     size_t d = dim();
     if (_array != nullptr) {
       switch (PyArray_TYPE(_array)) {
@@ -250,14 +264,14 @@ template <class TT> class PyDataSourceTT
       // Fall through
     }
     for(unsigned int i=0;i < d;++i) {
-      result[i] = get(id, i);
+      result[i] = get_impl(id, i, dummy);
     }
   }
-  inline void get_impl(const IDType &id, std::vector<ElementType> &result, PvsData) const {
+inline void get_impl(const IDType &id, std::vector<ElementType> &result, PvsData dummy) const {
     size_t d = dim();
     for(long j=0; j < _array->size(); j++){
       for(unsigned int i=0;i < d;++i) {
-        result[i] = get(id, i);
+        result[i] = get_impl(id, i, dummy);
       }
     }
   }
@@ -849,6 +863,7 @@ class SourceABC {
   virtual PyObject * get_array() const = 0;
   virtual bool is_using_pyarray() const = 0;
   virtual void set_array(PyObject * o) = 0;
+  virtual void refresh() = 0;    
 };
 
 template <class T> class SourceT : SourceABC {
@@ -860,6 +875,7 @@ template <class T> class SourceT : SourceABC {
   virtual PyObject * get_array() const {return _impl->get_array();};
   virtual bool is_using_pyarray() const {return _impl->is_using_pyarray();};
   virtual void set_array(PyObject * o) {_impl->set_array(o);};
+  virtual void refresh() {_impl->refresh();};  
 };
 
 typedef SourceT<PyDataSource_> PyDataSource;
