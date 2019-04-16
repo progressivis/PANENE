@@ -27,10 +27,11 @@ cdef class Index:
     cdef SourceABC * c_src
     cdef IndexParams    c_indexParams
     cdef IndexABC    * c_index
-
+    cdef table
     def __cinit__(self, array, w=(0.3, 0.7), float reconstruction_weight=0.25, trees = None):
         cdef PyDataSource_* src
         cdef ProgressivisSource_* src_pvs
+        
         if not (hasattr(array, '__module__') and 'progressivis.table.' in array.__module__):
             check_array(array)
             src = new PyDataSource_(array)
@@ -39,7 +40,8 @@ cdef class Index:
                                      self.c_indexParams, TreeWeight(w[0], w[1]),
                                      reconstruction_weight)))
         else:
-            array_ = array.get_panene_data()
+            self.table = array
+            array_ = self.table.get_panene_data()
             src_pvs = new ProgressivisSource_(array_)
             self.c_src = <SourceABC*>(new ProgressivisSource(src_pvs))
             self.c_index = <IndexABC*>(new PyIndexPvs(new PyIndexPvs_(src_pvs,
@@ -67,11 +69,15 @@ cdef class Index:
         return self.c_src.is_using_pyarray()
 
     def add_points(self, size_t end):
-        self.c_src.refresh()
+        self.refresh()
         self.c_index.addPoints(end)
 
     def size(self):
         return self.c_index.getSize()
+
+    def refresh(self):
+        array_ = self.table.get_panene_data()
+        self.c_src.set_array(array_)
 
     def knn_search(self, int pid, size_t k, checks=None, eps=None, sorted=None, cores=None):
         cdef SearchParams params = SearchParams()
@@ -93,7 +99,7 @@ cdef class Index:
             raise ValueError('k is larger than the number of points in the index. Make sure you called add_points()')
 
         cdef PyResultSet res = PyResultSet(k)
-        self.c_src.refresh()
+        self.refresh()
         with nogil:
             self.c_index.knnSearch(pid, res, k, params)
 
@@ -137,7 +143,7 @@ cdef class Index:
                 cpoints[j][i] = points[j, i]
 
         cdef PyResultSets ress = PyResultSets(n)
-        self.c_src.refresh()
+        self.refresh()
         with nogil:
             self.c_index.knnSearchVec(cpoints, ress, k, params)
         ids = np.ndarray((n, k), dtype=np.int)
@@ -155,6 +161,7 @@ cdef class Index:
 
     def run(self, int ops):
         cdef UpdateResult2 ur
+        self.refresh()        
         with nogil:
             ur = self.c_index.run(ops)
 
@@ -175,7 +182,7 @@ cdef class KNNTable:
     cdef SearchParams   c_searchParams
     cdef PyDataSink   * c_sink
     cdef KNNTableABC   * c_table
-
+    cdef table
 
     def __cinit__(self, object array, int k, object neighbors, object distances,
                   treew=(0.3, 0.7), tablew=(0.5, 0.5),
@@ -205,7 +212,8 @@ cdef class KNNTable:
             self.c_src = <SourceABC*>(new PyDataSource(src))
         else:
             progressivis_mode = True
-            array_ = array.get_panene_data()
+            self.table = array
+            array_ = self.table.get_panene_data()
             src_pvs = new ProgressivisSource_(array_)
             self.c_src = <SourceABC*>(
                 new ProgressivisSource(src_pvs))
@@ -257,8 +265,13 @@ cdef class KNNTable:
     def size(self):
         return self.c_table.getSize()
 
+    def refresh(self):
+        array_ = self.table.get_panene_data()
+        self.c_src.set_array(array_)
+
     def run(self, size_t ops):
         cdef UpdateResult ur
+        self.refresh()                
         with nogil:
             ur = self.c_table.run(ops)
         return {
