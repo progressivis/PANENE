@@ -1,6 +1,6 @@
 from cpython cimport PyObject
 from libcpp cimport bool
-
+from libcpp.vector cimport vector
 from numpy cimport int64_t, int32_t, uint32_t, float64_t
 cimport numpy as np
 
@@ -9,7 +9,7 @@ ctypedef unsigned long size_t
 cdef extern from "panene_python.h":
     cdef cppclass SourceABC:
         void set_array(object array)
-        void refresh()
+        void add_to_index(vector[int32_t])
         object get_array() const
         bool is_using_pyarray() const
     cdef cppclass PyDataSource_:
@@ -17,7 +17,7 @@ cdef extern from "panene_python.h":
     cdef cppclass PyDataSource:
         PyDataSource(PyDataSource_*)
         void set_array(object array)
-        void refresh()        
+        void add_to_index(vector[int32_t])        
         object get_array() const
         bool is_using_pyarray() const
 
@@ -148,7 +148,7 @@ cdef extern from "panene_python.h":
     cdef cppclass ProgressivisSource:
         ProgressivisSource(ProgressivisSource_*)
         void set_array(object array)
-        void refresh()        
+        void add_to_index(vector[int32_t])        
         object get_array() const
         bool is_using_pyarray() const
 
@@ -173,3 +173,4 @@ cdef extern from "panene_python.h":
         size_t getSize()
         UpdateResult run(size_t ops) nogil
         #PyResultSet& getNeighbors(int id)
+

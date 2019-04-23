@@ -62,6 +62,9 @@ struct KDTree
   }
 
   void setInsertionLog(const size_t id, const size_t freq, const size_t depth) {
+    if(id >= insertionLog.size()){
+      insertionLog.resize(2*id+1000);
+    }
     freqSum = freqSum - insertionLog[id].freq + freq;
     insertionLog[id].freq = freq;
     insertionLog[id].depth = depth;

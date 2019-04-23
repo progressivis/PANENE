@@ -3,7 +3,9 @@ import numpy as np
 import unittest
 import progressivis
 from progressivis.table import Table
+from progressivis.core.bitmap import bitmap
 import pandas as pd
+
 
 def random_table(n=100, d=10, dtype=np.float32):
     #import pdb;pdb.set_trace()
@@ -27,7 +29,7 @@ class Test_KNNTable(unittest.TestCase):
         table = KNNTable(array, k, neighbors, distances)
         
         self.assertTrue(table != None)
-        updates = table.run(10)
+        updates = table.run_ids(bitmap(range(10)).to_array())
         #print(updates)
         self.assertEqual(len(updates), 10)
 
@@ -35,17 +37,15 @@ class Test_KNNTable(unittest.TestCase):
         n = 1000
         ops = 100
         k = 20
-    
         neighbors = np.zeros((n, k), dtype=np.int64)
         distances = np.zeros((n, k), dtype=np.float32)
-
         x, _ = random_table(n)
-        
         table = KNNTable(x, k, neighbors, distances)
-
         for i in range(n // ops):
-            ur = table.run(ops)
-            
+            lower = i*ops
+            upper = lower+ops
+            ids = bitmap(x.id_to_index(x.index.value[lower:upper])).to_array()
+            ur = table.run_ids(ids)
             for nn in range(ur['numPointsInserted']):
                 for kk in range(k - 1):
                     self.assertTrue(distances[nn][kk] <= distances[nn][kk+1])
@@ -68,13 +68,19 @@ class Test_KNNTable(unittest.TestCase):
         table = KNNTable(x, k, neighbors, distances)
 
         for i in range(200):
-            ur = table.run(ops)
+            lower = i*ops
+            upper = lower+ops
+            ids = bitmap(x.id_to_index(x.index.value[lower:upper])).to_array()            
+            ur = table.run_ids(ids)
 
             if ur['numPointsInserted'] >= n:
                 break
 
         for i in range(10):
-            ur = table.run(ops)
+            lower = i*ops
+            upper = lower+ops
+            ids = bitmap(x.id_to_index(x.index.value[lower:upper])).to_array()            
+            ur = table.run_ids(ids)
 
             self.assertTrue(ur['addPointOps'] + ur['updateIndexOps'] <= w[0] * ops)
 

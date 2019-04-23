@@ -11,6 +11,7 @@
 #else
 #define DBG(x)
 #endif
+//#include <roaring/roaring.h>
 
 
 using namespace panene;
@@ -104,6 +105,9 @@ template <class TT> class PyDataSourceTT
   size_t size() const {
     return size_impl(dummy_type());
   }
+  void add_to_index(std::vector<int32_t> ids){
+    add_to_index_impl(ids, dummy_type());
+  }
  private:
   inline void set_array_impl(PyObject * o, Numpy2D) {
     DBG(std::cerr << "set_array(" << o << ")" << std::endl;)
@@ -155,7 +159,7 @@ template <class TT> class PyDataSourceTT
 
     set_dim();
   }
-  
+
   inline ElementType get_impl(const IDType &id, const IDType &dim, Numpy2D) const {
     if (_array != nullptr) {
       //DBG(std::cerr << "get from array" << std::endl);
@@ -203,6 +207,9 @@ template <class TT> class PyDataSourceTT
     return ret;
   }
   inline ElementType get_impl(const IDType &id, const IDType &dim, PvsData) const {
+    return get_impl_pvs(_ids[id], dim);
+  }
+  inline ElementType get_impl_pvs(const IDType &id, const IDType &dim) const {
     PyArrayObject* array = (*_array)[dim];
       //DBG(std::cerr << "get from array" << std::endl);
       void * ptr = PyArray_GETPTR1(array, id);
@@ -259,9 +266,12 @@ template <class TT> class PyDataSourceTT
   }
 inline void get_impl(const IDType &id, std::vector<ElementType> &result, PvsData dummy) const {
     size_t d = dim();
+    size_t ix = _ids[id];
+    size_t s = _ids.size();
+    size_t c = _ids.capacity();
     for(long j=0; j < _array->size(); j++){
       for(unsigned int i=0;i < d;++i) {
-        result[i] = get_impl(id, i, dummy);
+        result[i] = get_impl_pvs(ix, i);
       }
     }
   }
@@ -328,12 +338,13 @@ inline void get_impl(const IDType &id, std::vector<ElementType> &result, PvsData
   inline size_t size_impl(PvsData) const {
     DBG(std::cerr << "Size called " << std::endl);
     DBG(std::cerr << "size _object refcount: " << _object->ob_refcnt << std::endl);
-    if (_object==Py_None) {
-      DBG(std::cerr << "Size return 0" << std::endl);
-      return 0;
-    }
-    return PyArray_DIM((*_array)[0], 0);
+    return _ids.size();
   }
+
+  void add_to_index_impl(std::vector<int32_t> ids, Numpy2D){}
+  void add_to_index_impl(std::vector<int32_t> ids, PvsData){
+    _ids.insert(std::end(_ids), std::begin(ids), std::end(ids));
+  }  
 
 public:
   IDType findDimWithMaxSpan(const IDType &id1, const IDType &id2) {
@@ -441,7 +452,7 @@ public:
   PyObject      * _object;
   TT * _array;
   bool            _is_float;
-
+  std::vector<uint32_t> _ids;
 };
 
 class PyDataSink
@@ -853,6 +864,7 @@ class SourceABC {
   virtual PyObject * get_array() const = 0;
   virtual bool is_using_pyarray() const = 0;
   virtual void set_array(PyObject * o) = 0;
+  virtual void add_to_index(std::vector<int32_t> ids) = 0;
 };
 
 template <class T> class SourceT : SourceABC {
@@ -864,6 +876,9 @@ template <class T> class SourceT : SourceABC {
   virtual PyObject * get_array() const {return _impl->get_array();};
   virtual bool is_using_pyarray() const {return _impl->is_using_pyarray();};
   virtual void set_array(PyObject * o) {_impl->set_array(o);};
+  virtual void add_to_index(std::vector<int32_t> ids) {
+    _impl->add_to_index(ids);
+  };  
 };
 
 typedef SourceT<PyDataSource_> PyDataSource;

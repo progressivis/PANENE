@@ -1,11 +1,11 @@
-from cpython cimport PyObject, Py_INCREF
+from cpython cimport PyObject, Py_INCREF, array
 from cython.operator import dereference
 
 import warnings
 import sys
 import numpy as np
 cimport numpy as np
-
+from libcpp.vector cimport vector
 cimport cython
 
 DTYPE = np.float32
@@ -22,7 +22,14 @@ cdef inline check_array(arr):
         raise TypeError('Inconsistency in array len', arr)
 
 
-    
+cdef  vector[int32_t] add_to_index_impl(ids):
+    cdef array.array a = <array.array?>ids
+    cdef vector[int32_t] v =vector[int32_t]()
+    v.reserve(len(ids))
+    for i in ids:
+        v.push_back(i)
+    return v
+
 cdef class Index:
     cdef SourceABC * c_src
     cdef IndexParams    c_indexParams
@@ -76,6 +83,8 @@ cdef class Index:
         return self.c_index.getSize()
 
     def refresh(self):
+        if self.table is None:
+            return
         array_ = self.table.get_panene_data()
         self.c_src.set_array(array_)
 
@@ -159,6 +168,10 @@ cdef class Index:
                 
         return ids, dists
 
+    def add_to_index(self, ids):
+        cdef vector[int32_t] v = add_to_index_impl(ids)
+        self.c_src.add_to_index(v)
+    
     def run(self, int ops):
         cdef UpdateResult2 ur
         self.refresh()        
@@ -175,7 +188,10 @@ cdef class Index:
             'updateIndexElapsed': ur.updateIndexElapsed
         }
 
-    
+    def run_ids(self, ids):
+        self.add_to_index(ids)
+        return self.run(len(ids))
+
 cdef class KNNTable:
     cdef SourceABC * c_src
     cdef IndexParams    c_indexParams
@@ -264,11 +280,19 @@ cdef class KNNTable:
 
     def size(self):
         return self.c_table.getSize()
-
+    @property
+    def array(self):
+        return self.c_src.get_array()
     def refresh(self):
+        if self.table is None:
+            return        
         array_ = self.table.get_panene_data()
         self.c_src.set_array(array_)
 
+    def add_to_index(self, ids):
+        cdef vector[int32_t] v = add_to_index_impl(ids)
+        self.c_src.add_to_index(v)
+        
     def run(self, size_t ops):
         cdef UpdateResult ur
         self.refresh()                
@@ -286,3 +310,8 @@ cdef class KNNTable:
             'updateIndexElapsed': ur.updateIndexElapsed,
             'updateTableElapsed': ur.updateTableElapsed,
             }
+
+    def run_ids(self, ids):
+        self.add_to_index(ids)
+        return self.run(len(ids))
+    
