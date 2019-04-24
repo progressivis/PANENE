@@ -11,8 +11,6 @@
 #else
 #define DBG(x)
 #endif
-//#include <roaring/roaring.h>
-
 
 using namespace panene;
 
@@ -267,8 +265,6 @@ template <class TT> class PyDataSourceTT
 inline void get_impl(const IDType &id, std::vector<ElementType> &result, PvsData dummy) const {
     size_t d = dim();
     size_t ix = _ids[id];
-    size_t s = _ids.size();
-    size_t c = _ids.capacity();
     for(long j=0; j < _array->size(); j++){
       for(unsigned int i=0;i < d;++i) {
         result[i] = get_impl_pvs(ix, i);
