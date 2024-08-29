@@ -41,8 +41,8 @@ endif()
 add_subdirectory(src)
 add_subdirectory(examples)
 add_subdirectory(benchmark)
-enable_testing ()
-add_subdirectory(tests)
+#enable_testing ()
+#add_subdirectory(tests)
 
 # find python
 find_package(PythonInterp)

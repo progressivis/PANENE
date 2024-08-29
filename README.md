@@ -48,6 +48,20 @@ cmake ..
 make
 ```
 
+Build and install in a conda environment:
+```bash
+# create then activate a conda environment:
+conda create -n my_panene python=3.11
+conda activate my_panene
+pip install cython # or conda install
+pip install numpy"<2" # or conda install
+mkdir build
+cd build
+cmake -DCMAKE_INSTALL_PREFIX:PATH=$CONDA_PREFIX ..
+make panene
+make install
+```
+
 Install PANENE:
 ```bash
 sudo make install
