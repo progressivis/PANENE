@@ -309,6 +309,7 @@ cdef class KNNTable:
             'addPointElapsed': ur.addPointElapsed,
             'updateIndexElapsed': ur.updateIndexElapsed,
             'updateTableElapsed': ur.updateTableElapsed,
+	    'updatedIds': ur.updatedIds,
             }
 
     def run_ids(self, ids):
