@@ -1,6 +1,7 @@
 from cpython cimport PyObject
 from libcpp cimport bool
 from libcpp.vector cimport vector
+from libcpp.set cimport set
 from numpy cimport int64_t, int32_t, uint32_t, float64_t
 cimport numpy as np
 
@@ -112,16 +113,17 @@ cdef extern from "panene_python.h":
         float tableWeight
 
     cdef cppclass UpdateResult:
-      size_t addPointOps
-      size_t updateIndexOps
-      size_t updateTableOps
-      size_t addPointResult
-      size_t updateIndexResult
-      size_t updateTableResult
-      size_t numPointsInserted
-      double addPointElapsed
-      double updateIndexElapsed
-      double updateTableElapsed
+        size_t addPointOps
+        size_t updateIndexOps
+        size_t updateTableOps
+        size_t addPointResult
+        size_t updateIndexResult
+        size_t updateTableResult
+        size_t numPointsInserted
+        double addPointElapsed
+        double updateIndexElapsed
+        double updateTableElapsed
+        set[size_t] updatedIds
 
     cdef cppclass PyDataSink:
         PyDataSink(object neighbors, object distances) except +ValueError
