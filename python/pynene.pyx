@@ -78,7 +78,7 @@ cdef class Index:
     def add_points(self, size_t end):
         self.refresh()
         self.c_index.addPoints(end)
-
+	
     def size(self):
         return self.c_index.getSize()
 
@@ -87,7 +87,7 @@ cdef class Index:
             return
         array_ = self.table.get_panene_data()
         self.c_src.set_array(array_)
-
+	
     def knn_search(self, int pid, size_t k, checks=None, eps=None, sorted=None, cores=None):
         cdef SearchParams params = SearchParams()
 
@@ -112,8 +112,8 @@ cdef class Index:
         with nogil:
             self.c_index.knnSearch(pid, res, k, params)
 
-        ids = np.ndarray((1, res.k), dtype=np.int)
-        dists = np.ndarray((1, res.k), dtype=np.float)
+        ids = np.ndarray((1, res.k), dtype=np.int32) # was np.int
+        dists = np.ndarray((1, res.k), dtype=np.float32)  # was np.float
 
         for i in range(k):
             nei = res[i]
@@ -155,7 +155,7 @@ cdef class Index:
         self.refresh()
         with nogil:
             self.c_index.knnSearchVec(cpoints, ress, k, params)
-        ids = np.ndarray((n, k), dtype=np.int)
+        ids = np.ndarray((n, k), dtype=np.int32)  # was np.int
         dists = np.ndarray((n, k), dtype=np.float32)
         cdef PyResultSet res
 
@@ -283,9 +283,10 @@ cdef class KNNTable:
     @property
     def array(self):
         return self.c_src.get_array()
+
     def refresh(self):
         if self.table is None:
-            return        
+            return
         array_ = self.table.get_panene_data()
         self.c_src.set_array(array_)
 

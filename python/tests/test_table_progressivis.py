@@ -2,16 +2,15 @@ from pynene import KNNTable
 import numpy as np
 import unittest
 import progressivis
-from progressivis.table import Table
-from progressivis.core.bitmap import bitmap
+from progressivis.table.api import PTable
+from progressivis.core.pintset import PIntSet
 import pandas as pd
 
 
 def random_table(n=100, d=10, dtype=np.float32):
-    #import pdb;pdb.set_trace()
     arr = np.array(np.random.rand(n, d), dtype=dtype)
     df = pd.DataFrame(arr, columns=['_{}'.format(i) for i in range(d)])
-    return Table(name=None, data=df), arr
+    return PTable(name=None, data=df), arr
 
 def get_row(x, pt):
     return np.array(list(x.loc[pt,:].to_dict(ordered=True).values())).reshape((1,x.shape[1]))
@@ -29,9 +28,9 @@ class Test_KNNTable(unittest.TestCase):
         table = KNNTable(array, k, neighbors, distances)
         
         self.assertTrue(table != None)
-        updates = table.run_ids(bitmap(range(10)).to_array())
+        updates = table.run_ids(PIntSet(range(10)).to_array())
         #print(updates)
-        self.assertEqual(len(updates), 10)
+        self.assertEqual(len(updates), 11) # 10+1empty set
 
     def test_incremental_run(self):
         n = 1000
@@ -44,7 +43,7 @@ class Test_KNNTable(unittest.TestCase):
         for i in range(n // ops):
             lower = i*ops
             upper = lower+ops
-            ids = bitmap(x.id_to_index(x.index.value[lower:upper])).to_array()
+            ids = PIntSet(x.id_to_index(x.index.value[lower:upper])).to_array()
             ur = table.run_ids(ids)
             for nn in range(ur['numPointsInserted']):
                 for kk in range(k - 1):
@@ -70,7 +69,7 @@ class Test_KNNTable(unittest.TestCase):
         for i in range(200):
             lower = i*ops
             upper = lower+ops
-            ids = bitmap(x.id_to_index(x.index.value[lower:upper])).to_array()            
+            ids = PIntSet(x.id_to_index(x.index[lower:upper])).to_array()            
             ur = table.run_ids(ids)
 
             if ur['numPointsInserted'] >= n:
@@ -79,7 +78,7 @@ class Test_KNNTable(unittest.TestCase):
         for i in range(10):
             lower = i*ops
             upper = lower+ops
-            ids = bitmap(x.id_to_index(x.index.value[lower:upper])).to_array()            
+            ids = PIntSet(x.id_to_index(x.index.value[lower:upper])).to_array()            
             ur = table.run_ids(ids)
 
             self.assertTrue(ur['addPointOps'] + ur['updateIndexOps'] <= w[0] * ops)
