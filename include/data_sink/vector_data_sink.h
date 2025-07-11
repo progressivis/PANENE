@@ -47,6 +47,16 @@ namespace panene {
                 distances[id][i] = distances_[i];
             }
         }
+        void resize(size_t n){
+	    size_t prev_size = size;
+	    size = n;
+            neighbors.resize(n);
+            distances.resize(n);
+            for (size_t i = prev_size; i < n; ++i) {
+                neighbors[i].resize(k);
+                distances[i].resize(k);
+            }
+        }
 
     private:
         size_t size;

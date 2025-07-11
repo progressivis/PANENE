@@ -1,3 +1,4 @@
+#pragma once
 #include <Python.h>
 #include "numpy/arrayobject.h"
 #include "numpy/ndarrayobject.h"
@@ -43,9 +44,9 @@ template <class TT> class PyDataSourceTT
  public:
 
   typedef size_t IDType;
-  typedef L2<float> Distance;
-  typedef float ElementType;
-  typedef float DistanceType;
+  typedef L2<double> Distance;
+  typedef double ElementType;
+  typedef double DistanceType;
 
   using dummy_type=typename std::conditional<std::is_same<TT, PyArrayObject>::value, std::true_type, std::false_type>::type;
   //using dummy_type=typename std::true_type::type;
@@ -86,7 +87,7 @@ template <class TT> class PyDataSourceTT
   void set_array(PyObject * o) {
     set_array_impl(o, dummy_type());
   }
-
+  double * get_numpy_raw_data_double_p(){ return (double*)PyArray_DATA(_array);}
   PyObject * get_array() const {
     Py_INCREF(_object); //TODO check that this is the right way to do it
     return _object;
@@ -110,7 +111,8 @@ template <class TT> class PyDataSourceTT
     return size_impl(dummy_type());
   }
   void add_to_index(std::vector<int32_t> ids){
-    add_to_index_impl(ids, dummy_type());
+    //add_to_index_impl(ids, dummy_type());
+    _ids.insert(std::end(_ids), std::begin(ids), std::end(ids));    
   }
  private:
   inline void set_array_impl(PyObject * o, Numpy2D) {
@@ -233,17 +235,18 @@ template <class TT> class PyDataSourceTT
       DBG(std::cerr << "wrong type" << std::endl);
     }
 
-  inline void get_impl(const IDType &id, std::vector<ElementType> &result, Numpy2D dummy) const {    
+  inline void get_impl(const IDType &id, std::vector<ElementType> &result, Numpy2D dummy) const {
+    size_t ix = _ids.size() ? _ids[id] : id; // it happens when add_to_index() is called
     size_t d = dim();
     if (_array != nullptr) {
       switch (PyArray_TYPE(_array)) {
       case NPY_FLOAT: {
-        float * ptr = (float *)PyArray_GETPTR2(_array, id, 0);
+        float * ptr = (float *)PyArray_GETPTR2(_array, ix, 0);
         for(size_t i=0;i<d;++i) result[i] = ptr[i]; }
         return;
 #define CASE(TYPE,type)                                         \
       case TYPE: {                                              \
-        type * ptr = (type *)PyArray_GETPTR2(_array, id, 0);    \
+        type * ptr = (type *)PyArray_GETPTR2(_array, ix, 0);    \
         for(size_t i=0;i<d;++i) result[i] = (float)ptr[i]; }    \
         return
         CASE(NPY_DOUBLE, npy_double);
@@ -263,7 +266,7 @@ template <class TT> class PyDataSourceTT
       // Fall through
     }
     for(unsigned int i=0;i < d;++i) {
-      result[i] = get_impl(id, i, dummy);
+      result[i] = get_impl(ix, i, dummy);
     }
   }
 inline void get_impl(const IDType &id, std::vector<ElementType> &result, PvsData dummy) const {
@@ -343,12 +346,12 @@ inline void get_impl(const IDType &id, std::vector<ElementType> &result, PvsData
     DBG(std::cerr << "Size pvs is"<< _ids.size() << std::endl);
     return _ids.size();
   }
-
+  /*
   void add_to_index_impl(std::vector<int32_t> ids, Numpy2D){}
   void add_to_index_impl(std::vector<int32_t> ids, PvsData){
     _ids.insert(std::end(_ids), std::begin(ids), std::end(ids));
   }  
-
+  */
 public:
   IDType findDimWithMaxSpan(const IDType &id1, const IDType &id2) {
     size_t dimension = 0;
@@ -463,8 +466,8 @@ class PyDataSink
 {
 public:
   typedef size_t IDType;
-  typedef float DistanceType;
-  typedef L2<float> Distance;
+  typedef double DistanceType;
+  typedef L2<double> Distance;
 
  PyDataSink(PyObject * neighbors, PyObject * distances)
    : _neighbors(neighbors), _distances(distances),
@@ -843,17 +846,17 @@ public:
   PyArrayObject  * _aneighbors;
   PyArrayObject  * _adistances;
   npy_intp         _d;
-  mutable float  * _distance_cache;
+  mutable double  * _distance_cache;
   mutable IDType * _neighbor_cache;
   mutable IDType _last_distance_id;
   mutable IDType _last_neighbor_id;
 };
 
-typedef Neighbor<size_t, float> PyNeighbor;
+typedef Neighbor<size_t, double> PyNeighbor;
 
-typedef ResultSet<size_t, float> PyResultSet;
-typedef std::vector<ResultSet<size_t, float>> PyResultSets;
-typedef std::vector<float> Point;
+typedef ResultSet<size_t, double> PyResultSet;
+typedef std::vector<ResultSet<size_t, double>> PyResultSets;
+typedef std::vector<double> Point;
 typedef std::vector<Point> Points;
 typedef PyDataSourceTT<PyArrayObject> PyDataSource_;
 typedef ProgressiveKDTreeIndex<PyDataSource_> PyIndexL2_;
@@ -937,7 +940,6 @@ template <class T> class KnnTableT : KNNTableABC {
   virtual ~KnnTableT(){if(_impl){delete _impl; _impl = nullptr;}};
   virtual size_t getSize() {return _impl->getSize();};
   virtual UpdateResult run(size_t ops) {return _impl->run(ops);};
-  //virtual PyResultSet& getNeighbors(int id) {return _impl->getNeighbors(id);};
 };
 typedef KnnTableT<PyKNNTable_> PyKNNTable;
 typedef KnnTableT<PyKNNTablePvs_> PyKNNTablePvs;

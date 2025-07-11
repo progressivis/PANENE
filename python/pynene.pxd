@@ -13,12 +13,15 @@ cdef extern from "panene_python.h":
         void add_to_index(vector[int32_t])
         object get_array() const
         bool is_using_pyarray() const
+
     cdef cppclass PyDataSource_:
         PyDataSource_(object array)
+        void add_to_index(vector[int32_t])
+        
     cdef cppclass PyDataSource:
         PyDataSource(PyDataSource_*)
         void set_array(object array)
-        void add_to_index(vector[int32_t])        
+        void add_to_index(vector[int32_t])
         object get_array() const
         bool is_using_pyarray() const
 
@@ -176,3 +179,52 @@ cdef extern from "panene_python.h":
         UpdateResult run(size_t ops) nogil
         #PyResultSet& getNeighbors(int id)
 
+cdef extern from "config.h":
+    cdef cppclass Config:
+        size_t n
+        size_t input_dims
+        size_t output_dims
+        double theta
+        double perplexity
+        double eta
+        double momentum
+        size_t max_iter
+
+        bool use_ee  # early exaggeration
+        double ee_factor
+        size_t ee_iter
+        int seed
+
+        bool use_periodic
+        size_t periodic_cycle
+        size_t periodic_duration
+
+        bool periodic_reset_momentum
+        size_t log_per
+
+        size_t ops
+        size_t cores
+
+        size_t num_trees
+        size_t num_checks
+
+        float add_point_weight
+        float update_index_weight
+        float tree_weight
+        float table_weight
+
+cdef extern from "responsive_tsne.h":
+    cdef cppclass ResponsiveTSNE:
+        vector[double] Y
+        double C
+        ResponsiveTSNE(PyDataSource_* source, bool skip_random, Config* cnf)
+        void run_ids(vector[int32_t])
+        void dump_Y()
+
+cdef extern from "responsive_tsne.cpp":
+    pass
+
+
+cdef extern from "../lib/sptree.cpp":
+    pass
+    
