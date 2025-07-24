@@ -16,6 +16,7 @@ cdef extern from "panene_python.h":
 
     cdef cppclass PyDataSource_:
         PyDataSource_(object array)
+        void set_array(object array)
         void add_to_index(vector[int32_t])
         
     cdef cppclass PyDataSource:
@@ -216,7 +217,7 @@ cdef extern from "config.h":
 cdef extern from "responsive_tsne.h":
     cdef cppclass ResponsiveTSNE:
         vector[double] Y
-        double C
+        double evalErr
         ResponsiveTSNE(PyDataSource_* source, bool skip_random, Config* cnf)
         void run_ids(vector[int32_t])
         void dump_Y()

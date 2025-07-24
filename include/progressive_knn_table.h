@@ -362,6 +362,7 @@ namespace panene {
         size_t numPointsInserted;
 
         std::priority_queue<NeighborType, std::vector<NeighborType>, std::greater<NeighborType>> queue; // descending order
+    public:
         DynamicBitset queued;
     };
 

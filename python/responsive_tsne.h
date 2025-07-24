@@ -84,7 +84,7 @@ public:
   Table table;
   float old_ee_factor;
   int iter;
-  double C;
+  double evalErr;
   double momentum;
   double final_momentum;
   ResponsiveTSNE(PyDataSource_* src, bool skip_random, Config* cnf);

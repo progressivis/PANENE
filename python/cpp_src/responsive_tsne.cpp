@@ -30,7 +30,7 @@ double getEEFactor(Config* conf, int iter) {
             if (iter % conf->periodic_cycle < conf->periodic_duration) return conf->ee_factor;
             return 1.0;
         }
-        
+
         if (iter < conf->ee_iter) return conf->ee_factor;
     }
 
@@ -51,11 +51,11 @@ ResponsiveTSNE::ResponsiveTSNE(PyDataSource_* src, bool skip_random, Config* cnf
 					    SearchParams(cnf->num_checks, 0, 0, cnf->cores),
 					    TreeWeight(cnf->add_point_weight, cnf->update_index_weight),
 					    TableWeight(cnf->tree_weight, cnf->table_weight)
-					    
+
 					    )),
 				old_ee_factor(1.0f),
 				iter(0),
-				C(.0),
+				evalErr(.0),
 				momentum(cnf->momentum),
 				final_momentum(0.8){
   size_t D = conf->input_dims;
@@ -68,32 +68,17 @@ ResponsiveTSNE::ResponsiveTSNE(PyDataSource_* src, bool skip_random, Config* cnf
       srand((unsigned int)rand_seed);
     }
     else {
-      //printf("Using current time as random seed...\n");
+      printf("Using current time as random seed...\n");
       srand((unsigned int)time(NULL));
     }
-    }
-  if (skip_random_init != true) {
-    srand(0);
-    for (int i = 0; i < N * no_dims; i++) Y[i] = randn() * .0001;
   }
-
-  //printf("Source size %d\n", N);
-
-  double* X = source->get_numpy_raw_data_double_p();
-  zeroMean(X, N, D);
-  double max_X = .0;
-  for (int i = 0; i < N * D; i++) {
-    if (fabs(X[i]) > max_X) max_X = fabs(X[i]);
-  }
-  for (int i = 0; i < N * D; i++) X[i] /= max_X;
-
 }
 
 // Perform Responsive t-SNE with Progressive KDTree
 void ResponsiveTSNE::resize_all(size_t n){
-  size_t current_n = neighbors.size(); // an aritrary choice
-  n = current_n + n;
-  printf("Calling resize_all %d\n", n);  
+  size_t cur_n = neighbors.size(); // an aritrary choice
+  n = cur_n + n;
+  printf("Calling resize_all %d\n", n);
   Y.resize(no_dims*n, 0.);
   dY.resize(no_dims*n, 0.);
   uY.resize(no_dims*n, 0.);
@@ -101,22 +86,29 @@ void ResponsiveTSNE::resize_all(size_t n){
   neighbors.resize(n);
   gains.resize(no_dims*n, 1.0);
   sink.resize(n);
+  for (auto &tree : table.indexer->trees) {
+    tree->capacity = n;
+    tree->insertionLog.resize(n);
+  }
+  table.queued.resize(n);
+  size_t N = source->size();
+  if(cur_n >= N) return;
+  if (skip_random_init != true) {
+    //srand(0);
+    for (int i = cur_n; i < N * no_dims; i++) Y[i] = randn() * .0001;
+    }
+
 }
 void ResponsiveTSNE::run_ids(vector<int32_t> ids){
   if(ids.size() > 0){
     resize_all(ids.size());
   }
-  double* X = source->get_numpy_raw_data_double_p();
   double perplexity = conf->perplexity;
   double theta = conf->theta;
   size_t D = conf->input_dims;
-  //printf("Using no_dims = %d, perplexity = %f, and theta = %f\n", no_dims, perplexity, theta);
-  //double momentum = conf->momentum, final_momentum = .8;
   double eta = conf->eta;
   size_t N = source->size();
   size_t ops = conf->ops;
-  //printf("training start\n");
-  // for (int iter = 0; iter < max_iter; iter++) ...
   float start_perplex = 0, end_perplex = 0;
   float table_time = 0;
   float ee_factor = getEEFactor(conf, iter);
@@ -134,11 +126,9 @@ void ResponsiveTSNE::run_ids(vector<int32_t> ids){
   old_ee_factor = ee_factor;
 
   if (table.getSize() < N) {
-    //start_perplex = clock();
     updateSimilarity(ee_factor);
-    //end_perplex = clock();
   }
-  
+
   int n = table.getSize();
 
   computeGradient(n, ee_factor);
@@ -146,16 +136,16 @@ void ResponsiveTSNE::run_ids(vector<int32_t> ids){
   // Update gains
   for (int i = 0; i < n * no_dims; i++) gains[i] = (sign(dY[i]) != sign(uY[i])) ? (gains[i] + .2) : (gains[i] * .8);
   for (int i = 0; i < n * no_dims; i++) if (gains[i] < .01) gains[i] = .01;
-  
+
   // Perform gradient update (with momentum and gains)
   for (int i = 0; i < n * no_dims; i++) uY[i] = momentum * uY[i] - eta * gains[i] * dY[i];
   for (int i = 0; i < n * no_dims; i++)  Y[i] = Y[i] + uY[i];
-  
+
   double grad_sum = 0;
   for (int i = 0; i < n * no_dims; i++) {
     grad_sum += dY[i] * dY[i];
   }
-  
+
   // Make solution zero-mean
   zeroMeanVect(n, no_dims);
   int mom_switch_iter = conf->ee_iter;
@@ -163,22 +153,10 @@ void ResponsiveTSNE::run_ids(vector<int32_t> ids){
     momentum = final_momentum;
     printf("switch iter %d", iter);
   }
-        
-        // Print out progress
-        if (iter > 0 && (iter % conf->log_per == 0 || iter == conf->max_iter - 1)) {        
-	  //end = clock();
-
-            C = evaluateError(N, ee_factor);  // doing approximate computation here!
-            
-            //printf("Iteration %d: error is %f (total=%4.2f seconds, perplex=%4.2f seconds, tree=%4.2f seconds, ee_factor=%2.1f) grad_sum is %4.6f\n", iter, C, (float)(end - start) / CLOCKS_PER_SEC, (end_perplex - start_perplex) / CLOCKS_PER_SEC, table_time, ee_factor, grad_sum);
-
-            //total_time += (float)(end - start) / CLOCKS_PER_SEC;
-
-            //config.event_log("iter", iter, C, total_time);
-            //config.save_embedding(iter, Y);
-
-            //start = clock();
-        }  
+  if(iter % 100 == 0){
+    evalErr = evaluateError(N, ee_factor);
+    printf("N is %d, error=%lf,  iter = %d\n", N, evalErr, iter);
+  }
   iter++;
 }
 
@@ -203,7 +181,7 @@ void ResponsiveTSNE::updateSimilarity(float ee_factor) {
     map<size_t, map<size_t, double>> old;
 
     for (size_t i = table.getSize() - ar.addPointResult; i < table.getSize(); ++i) {
-        // point i has been newly inserted. 
+        // point i has been newly inserted.
         ar.updatedIds.insert(i);
 
         // for newly added points, we set its initial position to the mean of its neighbors

@@ -317,20 +317,39 @@ cdef class KNNTable:
         self.add_to_index(ids)
         return self.run(len(ids))
 
+
+def normalize(arr):
+    mn = np.mean(arr, axis=0)
+    norm = arr - mn
+    max_ = np.max(np.fabs(norm))
+    if max_ <=0:
+        return norm
+    return norm/max_
+
+def normalize_ids(arr, ids):
+    mn = np.mean(arr[ids], axis=0)
+    norm = arr[ids] - mn
+    max_ = np.max(np.fabs(norm))
+    if max_ <=0:
+        return norm
+    return norm/max_
+
 # https://stackoverflow.com/questions/75626349/how-to-wrap-stdshared-ptr-and-stdvector-from-c-in-cython
 # https://cython.readthedocs.io/en/latest/src/userguide/wrapping_CPlusPlus.html
+
 
 cdef class ProgressiVisTSNE:
     cdef PyDataSource_* c_src
     cdef ResponsiveTSNE * rtsne
+    cdef _table
+    cdef _column
     cdef Config * _config
     def __cinit__(self, table, column, skip_random=False, **kw):
         self.init_conf(**kw)
+        self._table = table
+        self._column = column
         arr = table[column].value
-        mn = np.mean(arr, axis=0)
-        norm = arr -mn
-        max_ = np.max(np.fabs(norm))
-        self.c_src = new PyDataSource_(norm/max_) #table[column].value)
+        self.c_src = new PyDataSource_(arr)
         cdef vector[int32_t] ids = add_to_index_impl(table.index.to_array())
         self.c_src.add_to_index(ids)
         self.rtsne = new ResponsiveTSNE(self.c_src, skip_random, self._config)
@@ -342,15 +361,20 @@ cdef class ProgressiVisTSNE:
         cdef int ndims = self._config.output_dims
         np_vect = np.array(y, dtype=np.float64)
         return np_vect.reshape(-1, ndims)
+
     def get_error(self):
-        cdef double err = self.rtsne.C
+        cdef double err = self.rtsne.evalErr
         return err
 
     def run_ids(self, ids):
+        array_ = self._table[self._column].value
+        self.c_src.set_array(array_)
         self.c_src.add_to_index(ids)
         return self.rtsne.run_ids(ids)
+
     def dump_y(self):
         self.rtsne.dump_Y()
+
     def init_conf(self, **kw):
         cdef Config * config = new Config()
         if "n" in kw:
