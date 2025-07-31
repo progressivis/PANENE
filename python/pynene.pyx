@@ -366,11 +366,11 @@ cdef class ProgressiVisTSNE:
         cdef double err = self.rtsne.evalErr
         return err
 
-    def run_ids(self, ids):
+    def run_ids(self, ids, repeat=1):
         array_ = self._table[self._column].value
         self.c_src.set_array(array_)
         self.c_src.add_to_index(ids)
-        return self.rtsne.run_ids(ids)
+        return self.rtsne.run_ids(ids, repeat)
 
     def dump_y(self):
         self.rtsne.dump_Y()

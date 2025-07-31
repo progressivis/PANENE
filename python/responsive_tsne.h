@@ -92,7 +92,8 @@ public:
     void run(double* X, size_t N, size_t D, double* Y, size_t no_dims, double perplexity, double theta, int rand_seed,
              bool skip_random_init, size_t max_iter, size_t stop_lying_iter, size_t mom_switch_iter, Config& config);
   */
-  void run_ids(vector<int32_t> ids);
+  void run_once(vector<int32_t> ids);
+  void run_ids(vector<int32_t> ids, size_t repeat=1);
   void resize_all(size_t n);
   void updateSimilarity(float ee_factor);
   void dump_Y();

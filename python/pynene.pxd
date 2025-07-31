@@ -219,7 +219,7 @@ cdef extern from "responsive_tsne.h":
         vector[double] Y
         double evalErr
         ResponsiveTSNE(PyDataSource_* source, bool skip_random, Config* cnf)
-        void run_ids(vector[int32_t])
+        void run_ids(vector[int32_t], size_t)
         void dump_Y()
 
 cdef extern from "responsive_tsne.cpp":

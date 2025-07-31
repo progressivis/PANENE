@@ -99,7 +99,7 @@ void ResponsiveTSNE::resize_all(size_t n){
     }
 
 }
-void ResponsiveTSNE::run_ids(vector<int32_t> ids){
+void ResponsiveTSNE::run_once(vector<int32_t> ids){
   if(ids.size() > 0){
     resize_all(ids.size());
   }
@@ -153,7 +153,7 @@ void ResponsiveTSNE::run_ids(vector<int32_t> ids){
     momentum = final_momentum;
     printf("switch iter %d", iter);
   }
-  if(iter % 100 == 0){
+  if(iter % 10 == 0){
     evalErr = evaluateError(N, ee_factor);
     printf("N is %d, error=%lf,  iter = %d\n", N, evalErr, iter);
   }
@@ -311,6 +311,15 @@ void ResponsiveTSNE::updateSimilarity(float ee_factor) {
     //}
 }
 
+void ResponsiveTSNE::run_ids(vector<int32_t> ids, size_t repeat){
+  if(ids.size() > 0){
+    run_once(ids);
+  } else {
+    for(int i=0; i < repeat; ++i){
+      run_once(ids);
+    }
+  }
+}
 // Compute gradient of the t-SNE cost function (using Barnes-Hut algorithm)
 void ResponsiveTSNE::computeGradient(size_t N, float ee_factor)
 {
