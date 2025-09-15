@@ -10,11 +10,11 @@ HERE = Path(os.path.dirname(os.path.abspath(__file__)))
 THERE = HERE / "python"
 extension = [Extension(
     "pynene",
-    [str(HERE / "pynene.pyx")],
+    [str(THERE / "pynene.pyx")],
     include_dirs= [str(THERE / "include"),
                    str(THERE / "cpp_src"),
-                   str(THERE / ".." / "include"),
-                   str(THERE / ".." / "examples" / "tsne" / "lib"),
+                   str(HERE / "include"),
+                   str(HERE / "examples" / "tsne" / "lib"),
                    np.get_include(),],
     extra_compile_args=["-std=c++17", "-w", "-g", "-O0"],
     language="c++",
