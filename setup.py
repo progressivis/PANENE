@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 HERE = Path(os.path.dirname(os.path.abspath(__file__)))
-THERE = HERE / python
+THERE = HERE / "python"
 extension = [Extension(
     "pynene",
     [str(HERE / "pynene.pyx")],
