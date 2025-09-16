@@ -153,10 +153,10 @@ void ResponsiveTSNE::run_once(vector<int32_t> ids){
     momentum = final_momentum;
     printf("switch iter %d", iter);
   }
-  if(iter % 10 == 0){
+  //if(iter % 10 == 0){
     evalErr = evaluateError(N, ee_factor);
-    printf("N is %d, error=%lf,  iter = %d\n", N, evalErr, iter);
-  }
+    //printf("N is %d, error=%lf,  iter = %d\n", N, evalErr, iter);
+    //}
   iter++;
 }
 
